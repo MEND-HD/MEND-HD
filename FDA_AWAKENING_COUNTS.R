@@ -9,7 +9,7 @@ awakening_data <- awakening_data %>%
     Nights = as.numeric(Nights),
     AwakeningCount = as.numeric(AwakeningCount)
   ) #upload data, separate columns for each nights
-
+#making the regression plot
 ggplot(awakening_data, aes(x= Nights, y= AwakeningCount, color= Subject))+
   geom_point()+
   geom_smooth(method = "lm", se = TRUE, linewidth = 1, linetype = "solid", fill= "grey")+
