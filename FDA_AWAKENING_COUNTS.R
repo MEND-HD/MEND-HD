@@ -7,7 +7,7 @@ awakening_data <- awakening_data %>%
     Subject = as.factor(Subject),
     Nights = as.numeric(Nights),
     AwakeningCount = as.numeric(AwakeningCount)
-  )
+  ) #upload data, separate columns for each nights
 
 ggplot(awakening_data, aes(x= Nights, y= AwakeningCount, color= Subject))+
   geom_point()+
