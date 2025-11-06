@@ -12,7 +12,7 @@ awakening_data <- awakening_data %>%
 #making the regression plot
 ggplot(awakening_data, aes(x= Nights, y= AwakeningCount, color= Subject))+
   geom_point()+
-  geom_smooth(method = "lm", se = TRUE, linewidth = 1, linetype = "solid", fill= "grey")+
+  geom_smooth(method = "lm", se = TRUE, linewidth = 1, linetype = "solid", fill= "grey")+ #adds standard error shading around regression line
   facet_wrap(~Subject)+
   scale_x_continuous(
     limits = c(1, max(awakening_data$Night)),
