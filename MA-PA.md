@@ -8,6 +8,42 @@ the date format to “Month”,“Day”, “Year”. Make new columns for each
 activity level ie. look for “sedentary, count” and find the digits
 directly after that. Filter so only it only shows Days 2-15
 
+``` r
+### hide r code and packages
+
+
+
+
+library(tidyverse)
+library(dplyr)
+library(mice)
+library(knitr)
+
+library(stringr)
+setwd(dir = "/Users/jade/Desktop/TC/MEND")
+data <- read.csv(file = "0009daystats.csv")
+
+# clean up the data so there is a  column for each activity level 
+# example: look for "sedentary, count" and find the digits directly after 
+#create a new column called "Day" that is 1-15 
+#change the date format so it is Month,Day,Year 
+
+activity_clean <- data %>%
+group_by(Subject) %>%
+  mutate(
+    Date = format(as.Date(Date), "%m-%d-%Y"),
+    Day = 1:n(),
+    Sedentary = as.numeric(str_extract(WearFilteredCutPoints, '(?<="Sedentary","Count":)\\d+')),
+    Light     = as.numeric(str_extract(WearFilteredCutPoints, '(?<="Light","Count":)\\d+')),
+    Moderate  = as.numeric(str_extract(WearFilteredCutPoints, '(?<="Moderate","Count":)\\d+')),
+    Vigorous  = as.numeric(str_extract(WearFilteredCutPoints, '(?<="Vigorous","Count":)\\d+')),
+    `Very Vigorous`  = as.numeric(str_extract(WearFilteredCutPoints, '(?<="Very Vigorous","Count":)\\d+'))
+  
+  ) %>%
+  filter(Day >= 2 & Day <= 15)
+#just include days 2-15 
+```
+
 # Data Transformation and Summary
 
 Reshape data to long format and calculate average counts and percentages
