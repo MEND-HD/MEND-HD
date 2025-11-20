@@ -14,7 +14,7 @@ output:
 Take the participant's "subjectdaystats" file and delete rows not part of the participant's wear days. Rename the file to XXXdaystats. Upload this CSV file to R. Assign the cleaned data file to a new object called "activity_clean". Create a new column called "Day" that is 1-15. Change the date format to "Month","Day", "Year". 
 Make new columns for each activity level ie. look for "sedentary, count" and find the digits directly after that. Filter so only it only shows Days 2-15 
 
-```{r echo=FALSE, message = FALSE, results='hide'}
+```{r echo=TRUE, message = FALSE, results='hide'}
 ### hide r code and packages
 
 
