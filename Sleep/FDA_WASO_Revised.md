@@ -6,6 +6,18 @@ on one day, WASO minutes were summed up for the day. The code below
 generates a graph for multiple overlayed subjects:
 
 ``` r
+install.packages("googledrive") #to install a .csv file directly from google drive, use the code from lines 9-19, code from line 21 uses downloaded data directly in R
+install.packages(c("googledrive", "googlesheets4"))
+library(googledrive)
+library(googlesheets4)
+
+drive_auth()
+
+file <- drive_get("WASO 2+4+9+3+14+18 - Sheet1.csv")
+tmp <- tempfile(fileext = ".csv")
+drive_download(file, path = tmp, overwrite = TRUE)
+waso_data <- read.csv(tmp)
+
 waso_data <- read.csv("WASO 2+4+9+3+14 - Sheet1.csv")
 
 library(ggplot2)
