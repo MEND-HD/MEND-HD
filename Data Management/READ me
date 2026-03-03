@@ -1,1 +1,21 @@
-#Data Management
+# MEND-HD Master Dataset Construction
+
+This folder contains the R Markdown file used to build the 14-day master dataset.
+
+## Required Files
+
+To run this script locally, place the following files in the same directory:
+
+- Date_RangesMF0303.xlsx
+- subjectdaystats.csv
+- activity_*.csv
+- heartrate_*.csv
+- sleepmetrics*.csv
+
+Raw data files are not stored in this repository.
+
+## Output
+
+Running the R Markdown file will generate:
+
+- Master_Data_03_03_26.xlsx
