@@ -1,0 +1,365 @@
+---
+title: "MEND-HD Master Dataset Construction"
+author: "Meghan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Overview
+
+This document constructs the harmonized 14-day multimodal master dataset for the MEND-HD project.
+
+All files are assumed to be located in the same directory as this `.Rmd` file.
+
+---
+
+# Load Required Packages
+
+```{r setup, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readxl)
+library(openxlsx)
+```
+
+---
+
+# Load Dates of Participants
+
+```{r}
+date_ranges <- read_excel("Date_RangesMF0303.xlsx")
+
+date_ranges$SUBJECT <- sprintf("%04d", as.numeric(date_ranges$SUBJECT))
+date_ranges$START_DATE <- as.Date(date_ranges$START_DATE)
+date_ranges$END_DATE   <- as.Date(date_ranges$END_DATE)
+```
+
+---
+
+# Build Demographic Backbone
+
+```{r}
+demo_raw <- read.csv(
+  "MENDHD_DATA_LABELS_2026-03-02_1609.csv",
+  stringsAsFactors = FALSE
+)
+
+# Remove Care Partner and Screen Fails (including 0005)
+demo_raw <- demo_raw %>%
+  filter(!grepl("c$", Record.ID))
+
+baseline_ids <- demo_raw %>%
+  filter(Event.Name == "Visit 3 (Baseline)") %>%
+  distinct(Record.ID)
+
+demo_raw <- demo_raw %>%
+  filter(Record.ID %in% baseline_ids$Record.ID)
+
+demo_raw <- demo_raw %>%
+  filter(Record.ID != "0005")
+
+# Filter for Age and Sex
+demo_visit1 <- demo_raw %>%
+  filter(Event.Name == "Visit 1 (Screening)") %>%
+  select(Record.ID, Age, Sex)
+
+# Filter for Stage
+demo_visit2 <- demo_raw %>%
+  filter(Event.Name == "Visit 2 (Assessment)") %>%
+  select(Record.ID, Investigators.assessed.Stage.)
+
+# Create Master Demographics Table
+demo_master <- left_join(
+  demo_visit1,
+  demo_visit2,
+  by = "Record.ID"
+)
+
+# Label Controls
+demo_master <- demo_master %>%
+  mutate(
+    Investigators.assessed.Stage. =
+      ifelse(
+        is.na(Investigators.assessed.Stage.) |
+          Investigators.assessed.Stage. == "",
+        "Control",
+        Investigators.assessed.Stage.
+      )
+  ) %>%
+  rename(SUBJECT = Record.ID)
+```
+
+---
+
+# Daily Wear Metrics
+
+```{r}
+daily_raw <- read.csv("subjectdaystats.csv", stringsAsFactors = FALSE)
+
+daily_raw <- daily_raw %>%
+  filter(!grepl("^test", Subject, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(Subject)),
+    DATE = as.Date(substr(Date, 1, 10))
+  )
+
+daily_joined <- left_join(daily_raw, date_ranges, by = "SUBJECT")
+
+daily_filtered <- daily_joined %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE)
+
+daily_final <- daily_filtered %>%
+  select(SUBJECT, DATE, WearMinutes, Steps, MVPA)
+
+master_data <- left_join(demo_master, daily_final, by = "SUBJECT")
+```
+
+---
+
+# Activity Intensity
+
+```{r}
+activity_raw <- read.csv(
+  "activity_23_5508340f-66b7-4f82-b427-ad8166649969_activitydaily29.csv",
+  stringsAsFactors = FALSE
+)
+
+activity_raw <- activity_raw %>%
+  filter(!grepl("^test", SUBJECT, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(SUBJECT)),
+    DATE = as.Date(substr(DATE, 1, 10))
+  )
+
+activity_joined <- left_join(activity_raw, date_ranges, by = "SUBJECT")
+
+activity_filtered <- activity_joined %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE)
+
+activity_final <- activity_filtered %>%
+  select(
+    SUBJECT,
+    DATE,
+    AWAKE_WEAR_FILTERED_SEDENTARY_BEHAVIOR,
+    AWAKE_WEAR_FILTERED_LIGHT_ACTIVITY,
+    AWAKE_WEAR_FILTERED_MODERATE_ACTIVITY,
+    AWAKE_WEAR_FILTERED_VIGOROUS_ACTIVITY
+  )
+
+master_data <- left_join(master_data, activity_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Gait Metrics
+
+```{r}
+gait_raw <- read.csv(
+  "activity_23_5508340f-66b7-4f82-b427-ad8166649969_gaitdailymetricscsem19.csv",
+  stringsAsFactors = FALSE
+)
+
+gait_raw <- gait_raw %>%
+  filter(!grepl("^test", SUBJECT, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(SUBJECT)),
+    DATE = as.Date(substr(DATE, 1, 10))
+  )
+
+gait_joined <- left_join(gait_raw, date_ranges, by = "SUBJECT")
+
+gait_filtered <- gait_joined %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE)
+
+gait_final <- gait_filtered %>%
+  select(SUBJECT, DATE, TOTAL_DISTANCE, CADENCE_MEAN, SPEED_MEAN)
+
+master_data <- left_join(master_data, gait_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Heart Rate Metrics
+
+```{r}
+hr_raw <- read.csv(
+  "heartrate_23_34b3ec0c-1105-4f14-8dc3-d1b18d5f23f3_heartratedays13.csv",
+  stringsAsFactors = FALSE
+)
+
+hr_raw <- hr_raw %>%
+  filter(!grepl("^test", SUBJECT, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(SUBJECT)),
+    DATE = as.Date(substr(DATE, 1, 10))
+  )
+
+hr_joined <- left_join(hr_raw, date_ranges, by = "SUBJECT")
+
+hr_filtered <- hr_joined %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE)
+
+hr_final <- hr_filtered %>%
+  select(SUBJECT, DATE, HR_MEAN_24H, HR_STD_24H)
+
+master_data <- left_join(master_data, hr_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Heart Rate Variability (with Transformations)
+
+```{r}
+hrv_raw <- read.csv(
+  "heartrate_23_34b3ec0c-1105-4f14-8dc3-d1b18d5f23f3_heartratevariabilitydays12.csv",
+  stringsAsFactors = FALSE
+)
+
+hrv_raw <- hrv_raw %>%
+  filter(!grepl("^test", SUBJECT, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(SUBJECT)),
+    DATE = as.Date(substr(DATE, 1, 10))
+  )
+
+hrv_joined <- left_join(hrv_raw, date_ranges, by = "SUBJECT")
+
+hrv_filtered <- hrv_joined %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE) %>%
+  mutate(
+    RMSSD_90PCT_24H = as.numeric(RMSSD_90PCT_24H),
+    SDNN_90PCT_24H  = as.numeric(SDNN_90PCT_24H),
+    SDSD_90PCT_24H  = as.numeric(SDSD_90PCT_24H),
+    PNN20_90PCT_24H = as.numeric(PNN20_90PCT_24H),
+    LF_POWER_90PCT_24H = as.numeric(LF_POWER_90PCT_24H),
+    HF_POWER_90PCT_24H = as.numeric(HF_POWER_90PCT_24H),
+    LF_HF_Ratio = ifelse(HF_POWER_90PCT_24H == 0,
+                         NA,
+                         LF_POWER_90PCT_24H / HF_POWER_90PCT_24H)
+  )
+
+hrv_final <- hrv_filtered %>%
+  select(
+    SUBJECT,
+    DATE,
+    RMSSD_90PCT_24H,
+    SDNN_90PCT_24H,
+    SDSD_90PCT_24H,
+    PNN20_90PCT_24H,
+    LF_POWER_90PCT_24H,
+    HF_POWER_90PCT_24H,
+    LF_HF_Ratio
+  )
+
+master_data <- left_join(master_data, hrv_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Sleep (Night-Based Transformation)
+
+```{r}
+sleep_raw <- read.csv(
+  "subjectsleepperiodmetrics.csv",
+  stringsAsFactors = FALSE
+)
+
+sleep_raw <- sleep_raw %>%
+  filter(!grepl("^test", Subject, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(Subject)),
+    InBedTime = as.POSIXct(InBedTime,
+                           format = "%Y-%m-%dT%H:%M:%S",
+                           tz = "UTC")
+  )
+
+sleep_raw <- sleep_raw %>%
+  mutate(
+    hour = as.numeric(format(InBedTime, "%H")),
+    NightDate = case_when(
+      hour >= 17 ~ as.Date(InBedTime),
+      hour < 8   ~ as.Date(InBedTime) - 1,
+      TRUE       ~ NA_Date_
+    )
+  ) %>%
+  filter(!is.na(NightDate))
+
+sleep_nightly <- sleep_raw %>%
+  group_by(SUBJECT, NightDate) %>%
+  summarise(
+    WakeAfterOnsetInMinutes =
+      sum(as.numeric(WakeAfterOnsetInMinutes), na.rm = TRUE),
+    AwakeningCount =
+      sum(as.numeric(AwakeningCount), na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sleep_filtered <- left_join(sleep_nightly, date_ranges,
+                            by = "SUBJECT") %>%
+  filter(NightDate >= START_DATE &
+           NightDate <= END_DATE) %>%
+  arrange(SUBJECT, NightDate) %>%
+  group_by(SUBJECT) %>%
+  mutate(NIGHT = row_number()) %>%
+  ungroup()
+
+sleep_final <- sleep_filtered %>%
+  rename(DATE = NightDate) %>%
+  select(SUBJECT, DATE, NIGHT,
+         WakeAfterOnsetInMinutes, AwakeningCount)
+
+master_data <- left_join(master_data, sleep_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Sleep Stages
+
+```{r}
+sleepmetrics_raw <- read.csv(
+  "sleepmetricsdacnn_23_c5669506-b1d1-4b2a-a13b-ed8b3cf518da_sleepmetrics4.csv",
+  stringsAsFactors = FALSE
+)
+
+sleepmetrics_raw <- sleepmetrics_raw %>%
+  filter(!grepl("^test", SUBJECT, ignore.case = TRUE)) %>%
+  mutate(
+    SUBJECT = sprintf("%04d", as.numeric(SUBJECT)),
+    DATE = as.Date(substr(DATE, 1, 10))
+  )
+
+sleepmetrics_filtered <- left_join(sleepmetrics_raw,
+                                   date_ranges,
+                                   by = "SUBJECT") %>%
+  filter(DATE >= START_DATE & DATE <= END_DATE)
+
+sleepmetrics_final <- sleepmetrics_filtered %>%
+  select(
+    SUBJECT,
+    DATE,
+    TOTAL_SLEEP_TIME_MINUTES,
+    LIGHT_SLEEP_TIME_MINUTES,
+    DEEP_SLEEP_TIME_MINUTES,
+    REM_SLEEP_TIME_MINUTES,
+    NREM_SLEEP_TIME_MINUTES
+  )
+
+master_data <- left_join(master_data, sleepmetrics_final,
+                         by = c("SUBJECT", "DATE"))
+```
+
+---
+
+# Final Export
+
+```{r}
+write.xlsx(
+  master_data,
+  file = "Master_Data_03_03_26.xlsx",
+  rowNames = FALSE
+)
+```
