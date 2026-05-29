@@ -1,0 +1,372 @@
+---
+title: "MayWASOAnalysis"
+format: html
+editor: visual
+---
+
+## Coding Using Master File Data
+
+# Spaghetti Plots
+
+```{r}
+#Master File Code 
+hd_ids   <- c(2, 4, 9, 3, 14, 18, 22, 23, 25, 26, 29, 30, 31, 35, 42) # Isolate Huntington's Disease group: participants 2, 3, 4, 9, 14, 18, 22, 23, 24, 25, 26, 27(NO DATA REMOVE), 29, 30, 31, 35, 37(not enough data in this file, so not included), 42
+ctrl_ids <- c(19, 20, 21, 41, 43)  # Isolate Control group: participants 19, 20, 21, 40(not here due to not enough days), 41, 43, (45+47 lack data in this file)
+
+# cleaning function, filter out participants with under 600 minute Weartime and days where WASO is NA or blank in the master sheet
+clean_data <- function(df, ids, group_label = NULL) {
+  df %>%
+    rename(
+      SUBJECT   = Participant.ID,
+      STAGE     = Stage,
+      NIGHT     = Night,
+      WEAR_TIME = Wear.Time,
+      WASO      = WASO.minutes
+    ) %>%
+    filter(SUBJECT %in% ids) %>%
+    mutate(
+      STAGE = case_when(
+        STAGE %in% c("Mild Stage 3", "Moderate Stage 3") ~ "Stage 3",
+        STAGE == "Control"                                ~ "Control",
+        TRUE                                              ~ STAGE
+      )
+    ) %>%
+    filter(WEAR_TIME >= 600) %>% 
+    filter(!is.na(WASO), !is.na(NIGHT)) %>%
+    filter(NIGHT >= 1 & NIGHT <= 15) %>%
+    mutate(SUBJECT = as.factor(SUBJECT))
+}
+
+raw <- read.csv("Master_Data_05_07_26.xlsx.csv")
+
+waso_data <- clean_data(raw, hd_ids)
+ctrl_data <- clean_data(raw, ctrl_ids)
+
+
+# HD Spaghetti Plot Code, make each participant line grey and overlay an average line for each HD stage
+stage_colors <- c("Stage 2" = "navy", "Stage 3" = "red")
+stage_shapes <- c("Stage 2" = 16,        "Stage 3" = 17)
+
+ggplot(waso_data, aes(x = NIGHT, y = WASO, group = SUBJECT)) +
+  geom_line(color = "grey70", linewidth = 0.7, alpha = 0.6) +
+  geom_point(color = "grey70", size = 1.8, alpha = 0.5) +
+  stat_summary(
+    aes(group = STAGE, color = STAGE),
+    fun = mean, geom = "line", linewidth = 1.8, lineend = "round"
+  ) +
+  stat_summary(
+    aes(group = STAGE, color = STAGE, shape = STAGE),
+    fun = mean, geom = "point", size = 3.5
+  ) +
+  scale_color_manual(values = stage_colors) +
+  scale_shape_manual(values = stage_shapes) +
+  scale_x_continuous(limits = c(1, 15), breaks = 1:15) +
+  labs(
+    title = "HD WASO Time Trends Over 2 Weeks By Participant",
+    x = "Night", y = "WASO (minutes)", color = "HD Stage", shape = "HD Stage"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.line          = element_line(color = "grey40", linewidth = 0.8),
+    axis.ticks         = element_line(color = "grey40", linewidth = 0.8),
+    panel.grid.major.x = element_blank(),
+    strip.background   = element_blank(),
+    panel.spacing      = unit(1, "lines"),
+    panel.border       = element_rect(color = "grey40", fill = NA),
+    text               = element_text(size = 15),
+    plot.title         = element_text(hjust = 0.5, face = "bold"),
+    legend.position    = "right"
+  )
+
+
+# Repeat for Control Spaghetti Plot 
+ggplot(ctrl_data, aes(x = NIGHT, y = WASO, group = SUBJECT)) +
+  geom_line(color = "grey70", linewidth = 0.7, alpha = 0.6) +
+  geom_point(color = "grey70", size = 1.8, alpha = 0.5) +
+  stat_summary(
+    aes(group = 1),
+    fun = mean, geom = "line",
+    color = "darkgreen", linewidth = 1.8, lineend = "round"
+  ) +
+  stat_summary(
+    aes(group = 1),
+    fun = mean, geom = "point",
+    color = "darkgreen", size = 3.5, shape = 15
+  ) +
+  scale_x_continuous(limits = c(1, 15), breaks = 1:15) +
+  labs(
+    title = "Control WASO Time Trends Over 2 Weeks By Participant",
+    x = "Night", y = "WASO (minutes)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.line          = element_line(color = "grey40", linewidth = 0.8),
+    axis.ticks         = element_line(color = "grey40", linewidth = 0.8),
+    panel.grid.major.x = element_blank(),
+    strip.background   = element_blank(),
+    panel.spacing      = unit(1, "lines"),
+    panel.border       = element_rect(color = "grey40", fill = NA),
+    text               = element_text(size = 15),
+    plot.title         = element_text(hjust = 0.5, face = "bold"),
+    legend.position    = "right"
+  )
+
+```
+
+# Box Plot
+
+```{r}
+
+# Load & Prep Data
+master <- read.csv("Master_Data_05_07_26.xlsx.csv")
+master$Participant.ID <- sprintf("%04d", as.integer(master$Participant.ID))
+
+all_data <- master[master$Participant.ID %in% c("0019", "0020", "0021", "0041", "0043",
+                                                  "0002", "0003", "0004", "0009", "0014",
+                                                  "0018", "0022", "0023", "0025", "0026",
+                                                  "0029", "0030", "0031", "0035", "0042"), ]
+
+# Recode stages
+all_data$Stage[all_data$Stage %in% c("Mild Stage 3", "Moderate Stage 3")] <- "Stage 3"
+all_data$Stage[all_data$Participant.ID %in% c("0019", "0020", "0021", "0041", "0043")] <- "Control"
+
+# Clean and filter
+all_data$Wear.Time    <- suppressWarnings(as.numeric(all_data$Wear.Time))
+all_data$WASO.minutes <- suppressWarnings(as.numeric(all_data$WASO.minutes))
+all_data$Night        <- suppressWarnings(as.numeric(all_data$Night))
+
+all_data <- all_data[!is.na(all_data$Wear.Time)    & all_data$Wear.Time    >= 600, ]
+all_data <- all_data[!is.na(all_data$WASO.minutes) & !is.na(all_data$Night), ]
+all_data <- all_data[all_data$Night >= 1 & all_data$Night <= 15, ]
+
+#Collapse to participant-level averages 
+participant_avg <- all_data %>%
+  group_by(Participant.ID, Stage) %>%
+  summarise(mean_waso = mean(WASO.minutes, na.rm = TRUE),
+            .groups = "drop")
+
+participant_avg$Stage <- factor(participant_avg$Stage,
+                                levels = c("Control", "Stage 2", "Stage 3"))
+
+#Colours 
+group_colors <- c("Control" = "darkgreen",
+                  "Stage 2" = "navy",
+                  "Stage 3" = "red")
+
+# Plot 
+ggplot(participant_avg, aes(x = Stage, y = mean_waso, color = Stage)) +
+
+  # Jittered points — one per participant
+  geom_jitter(
+    width = 0.12,
+    size  = 4,
+    alpha = 0.7,
+    shape = 16
+  ) +
+
+  # Box plot — unfilled so points show through
+  geom_boxplot(
+    outlier.shape = NA,
+    fill          = NA,
+    linewidth     = 0.9,
+    width         = 0.5
+  ) +
+
+  scale_color_manual(values = group_colors) +
+
+  scale_y_continuous(
+    breaks = seq(0, 200, by = 50),
+    limits = c(0, 210)
+  ) +
+
+  labs(
+    title = "WASO Box Plot by HD Stage",
+    x     = "HD Stage",
+    y     = "Wake After Sleep Onset (Minutes)"
+  ) +
+
+  theme_minimal() +
+  theme(
+    axis.line          = element_line(color = "grey40", linewidth = 0.6),
+    axis.ticks         = element_line(color = "grey40", linewidth = 0.6),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    text               = element_text(size = 14),
+    plot.title         = element_text(hjust = 0.5, face = "bold", size = 16),
+    axis.title.x       = element_text(face = "bold", size = 14),
+    axis.title.y       = element_text(size = 13),
+    legend.position    = "none"
+  )
+```
+
+```{r}
+#T-Test Analysis for average (participant level) WASO between HD 2 and 3 vs. Control
+
+# Calculate participant-level average WASO first (correct statistical approach)
+hd_participant_avg <- waso_data %>%
+  group_by(SUBJECT, STAGE) %>%
+  summarise(mean_waso = mean(WASO, na.rm = TRUE), .groups = "drop")
+
+ctrl_participant_avg <- ctrl_data %>%
+  group_by(SUBJECT, STAGE) %>%
+  summarise(mean_waso = mean(WASO, na.rm = TRUE), .groups = "drop")
+
+# Extract vectors for each group
+stage2_waso  <- hd_participant_avg %>% filter(STAGE == "Stage 2") %>% pull(mean_waso)
+stage3_waso  <- hd_participant_avg %>% filter(STAGE == "Stage 3") %>% pull(mean_waso)
+control_waso <- ctrl_participant_avg %>% pull(mean_waso)
+
+# ── Welch's t-tests (does not assume equal variance — safer for unequal group sizes)
+ttest_s2_vs_ctrl <- t.test(stage2_waso, control_waso, var.equal = FALSE)
+ttest_s3_vs_ctrl <- t.test(stage3_waso, control_waso, var.equal = FALSE)
+
+# summary table
+ttest_summary <- tibble(
+  Comparison       = c("Stage 2 vs Control", "Stage 3 vs Control"),
+  n_group1         = c(length(stage2_waso),  length(stage3_waso)),
+  n_control        = c(length(control_waso), length(control_waso)),
+  mean_group1      = c(mean(stage2_waso),    mean(stage3_waso)),
+  mean_control     = c(mean(control_waso),   mean(control_waso)),
+  mean_difference  = c(mean(stage2_waso) - mean(control_waso),
+                       mean(stage3_waso) - mean(control_waso)),
+  t_statistic      = c(ttest_s2_vs_ctrl$statistic, ttest_s3_vs_ctrl$statistic),
+  df               = c(ttest_s2_vs_ctrl$parameter, ttest_s3_vs_ctrl$parameter),
+  p_value          = c(ttest_s2_vs_ctrl$p.value,   ttest_s3_vs_ctrl$p.value),
+  significant_0.05 = c(ttest_s2_vs_ctrl$p.value < 0.05,
+                       ttest_s3_vs_ctrl$p.value < 0.05)
+)
+
+ttest_summary
+
+
+# Descriptive Statistics (for reference)
+
+all_participant_avg <- bind_rows(hd_participant_avg, ctrl_participant_avg)
+
+group_stats <- all_participant_avg %>%
+  group_by(STAGE) %>%
+  summarise(
+    n_participants    = n(),
+    grand_mean_waso   = mean(mean_waso,   na.rm = TRUE),
+    grand_sd_waso     = sd(mean_waso,     na.rm = TRUE),
+    grand_median_waso = median(mean_waso, na.rm = TRUE),
+    grand_min_waso    = min(mean_waso,    na.rm = TRUE),
+    grand_max_waso    = max(mean_waso,    na.rm = TRUE),
+    .groups = "drop"
+  )
+
+```
+
+# T-test Comparing Week 1 and Week 2 Averages
+
+```{r}
+# Week 1 vs Week 2 WASO T-tests (test-retest reliability)
+
+# Step 1: Load and prep all three groups from master file
+master <- read.csv("Master_Data_05_07_26.xlsx.csv")
+master$Participant.ID <- sprintf("%04d", as.integer(master$Participant.ID))
+
+# Combine all participants into one cleaned dataframe
+all_data <- master[master$Participant.ID %in% c("0019", "0020", "0021", "0041", "0043",
+                                                  "0002", "0003", "0004", "0009", "0014",
+                                                  "0018", "0022", "0023", "0025", "0026",
+                                                  "0029", "0030", "0031", "0035", "0042"), ]
+
+# Recode stage
+all_data$Stage[all_data$Stage %in% c("Mild Stage 3", "Moderate Stage 3")] <- "Stage 3"
+all_data$Stage[all_data$Participant.ID %in% c("0019", "0020", "0021", "0041", "0043")] <- "Control"
+
+# Clean wear time and filter
+all_data$Wear.Time     <- suppressWarnings(as.numeric(all_data$Wear.Time))
+all_data$WASO.minutes  <- suppressWarnings(as.numeric(all_data$WASO.minutes))
+all_data <- all_data[!is.na(all_data$Wear.Time)    & all_data$Wear.Time    >= 600, ]
+all_data <- all_data[!is.na(all_data$WASO.minutes) & !is.na(all_data$Night), ]
+all_data <- all_data[all_data$Night >= 1 & all_data$Night <= 15, ]
+
+# Step 2: Assign week
+all_data$Week <- ifelse(all_data$Night <= 7, "Week1", "Week2")
+
+# Step 3: Participant-level average WASO per week
+participant_week_avg <- aggregate(
+  WASO.minutes ~ Participant.ID + Stage + Week,
+  data = all_data,
+  FUN  = mean
+)
+
+# Step 4: Reshape to wide format so each participant has one row
+#         with a Week1 and Week2 column
+install.packages("reshape2")
+library(reshape2)
+participant_wide <- dcast(participant_week_avg,
+                          Participant.ID + Stage ~ Week,
+                          value.var = "WASO.minutes")
+
+# Remove participants missing either week (can't run paired test without both)
+participant_wide <- participant_wide[!is.na(participant_wide$Week1) &
+                                     !is.na(participant_wide$Week2), ]
+
+
+# Step 5: Run paired t-tests for each group
+run_paired_ttest <- function(data, group_name) {
+  grp <- data[data$Stage == group_name, ]
+  
+  cat("\n══════════════════════════════════════════════════════\n")
+  cat(" Group:", group_name, "| n =", nrow(grp), "\n")
+  cat("══════════════════════════════════════════════════════\n")
+  
+  if (nrow(grp) < 2) {
+    cat("  Not enough participants to run t-test (n < 2)\n")
+    return(NULL)
+  }
+  
+  cat(sprintf("  Week 1 mean WASO: %.2f minutes\n", mean(grp$Week1)))
+  cat(sprintf("  Week 2 mean WASO: %.2f minutes\n", mean(grp$Week2)))
+  cat(sprintf("  Mean difference (W2 - W1): %.2f minutes\n",
+              mean(grp$Week2 - grp$Week1)))
+  cat("\n")
+  
+  result <- t.test(grp$Week1, grp$Week2, paired = TRUE)
+  print(result)
+  return(result)
+}
+
+ttest_stage2  <- run_paired_ttest(participant_wide, "Stage 2")
+ttest_stage3  <- run_paired_ttest(participant_wide, "Stage 3")
+ttest_control <- run_paired_ttest(participant_wide, "Control")
+
+
+# Step 6: Clean summary table
+library(knitr)
+
+make_row <- function(data, group_name, result) {
+  grp <- data[data$Stage == group_name, ]
+  if (is.null(result)) return(NULL)
+  data.frame(
+    Group           = group_name,
+    n               = nrow(grp),
+    Week1_Mean_WASO = round(mean(grp$Week1), 2),
+    Week2_Mean_WASO = round(mean(grp$Week2), 2),
+    Mean_Difference = round(mean(grp$Week2 - grp$Week1), 2),
+    t_statistic     = round(result$statistic, 3),
+    df              = round(result$parameter, 2),
+    p_value         = round(result$p.value, 4),
+    Significance    = ifelse(result$p.value < 0.05, "*", "ns")
+  )
+}
+
+summary_table <- rbind(
+  make_row(participant_wide, "Stage 2",  ttest_stage2),
+  make_row(participant_wide, "Stage 3",  ttest_stage3),
+  make_row(participant_wide, "Control",  ttest_control)
+)
+
+cat("\n── Week 1 vs Week 2 Paired T-test Summary ───────────────\n\n")
+print(knitr::kable(summary_table,
+                   col.names = c("Group", "n", "Week 1 Mean WASO",
+                                 "Week 2 Mean WASO", "Mean Diff (W2-W1)",
+                                 "t", "df", "p value", "Sig"),
+                   align = "lcccccccc"))
+
+write.csv(summary_table, "Week1_vs_Week2_WASO_ttest.csv", row.names = FALSE)
+participant_wide
+```
