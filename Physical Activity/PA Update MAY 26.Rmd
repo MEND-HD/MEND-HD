@@ -1,0 +1,1044 @@
+---
+title: "Mend Physical Activity"
+always_allow_html: true
+output:
+  html_document: 
+    toc: true 
+    toc_float: true
+  md_document:
+    variant: gfm
+    preserve_yaml: true
+---
+
+# 1. Data Cleaning & Transformation
+<p style="font-size:20px;">
+Take the master sheet "Master_Data_05_07_26.csv" file that contains the participants wear days data. Assign the cleaned data file to a new object called "activity_clean". Create a new column called "Day" that is 2-15. Change the date format to "Month","Day", "Year". 
+Make new columns for each activity level ie. look for "sedentary, count" and find the digits directly after that. Filter so only it only shows Days 2-15 
+</p>
+```{r echo=TRUE, message = FALSE, results='show'}
+
+
+
+#install.packages("googledrive")
+#library("googledrive")
+
+library(tidyverse)
+library(dplyr)
+library(mice)
+library(knitr)
+library(kableExtra)
+
+library(stringr)
+#setwd(dir = "/Users/jade/Desktop/TC/MEND")
+data <- read.csv(file = "Master_Data_05_07_26.csv")
+# clean up the data so there is a  column for each activity level 
+# example: look for "sedentary, count" and find the digits directly after 
+#create a new column called "Day" that is 2-15 
+#change the date format so it is Month,Day,Year 
+## 45 and 47 filtered out at the time of FDA May meeting as they had not finished data collection
+activity_clean <- data %>%
+  filter(!Participant.ID %in% c(0045, 0047))%>%  
+        # Wear.Time >= 600) 
+  group_by(Participant.ID) %>%
+  mutate(
+    Day = row_number(),       
+    Week = case_when(
+      Day >= 2 & Day <= 8  ~ "Week1",
+      Day >= 9 & Day <= 15 ~ "Week2"
+    ),
+     Stage= case_when(
+      Stage %in% c("Mild Stage 3", "Moderate Stage 3") ~ "Stage 3",
+      TRUE ~ Stage )
+  ) %>%                        
+  rename(
+    Sedentary = Sedentary.Behavior,
+    Light = Light.Activity,
+    Moderate = Moderate.Activity, 
+    Vigorous = Vigorous.Activity
+  ) %>%
+  filter(Day >= 2 & Day <= 15) %>%
+  ungroup()
+
+```
+<p style="font-size:20px;">
+Reshape data to long format and calculate average counts and percentages for each activity level. For each activity level, take the average counts and turn it into a percentage so it shows the percentage of time the participant spent in each activity level 
+</p>
+```{r echo=TRUE, message = FALSE, results='show'}
+activity_chart <- activity_clean %>%
+  group_by(Participant.ID)%>%
+  select(Stage,Day, Sedentary, Light, Moderate, Vigorous)  %>%
+  pivot_longer(cols = c(Sedentary,Light, Moderate,Vigorous),
+               names_to = "Activity",
+               values_to = "Count")
+activity_chart
+
+activity_summary <- activity_chart %>%
+  group_by(Participant.ID,Stage,Day,Activity) %>%
+  summarise(Average = mean(Count, na.rm = TRUE))%>%
+  mutate(Percent = round(Average / sum(Average) * 100, 1))%>%
+  mutate(Activity = factor(Activity, levels = c("Sedentary","Light", "Moderate", "Vigorous")))
+
+
+```
+
+
+```{r,fig.show="hold", fig.width=25,fig.height=20, echo=TRUE, message=FALSE}
+# Average Activity Distribution (Pie Chart)
+#<p style="font-size:20px;">
+#Create a pie chart showing the activity intensity distribution for each participant 
+#</p>
+
+#ggplot(activity_summary, aes(x = "", y = Average, fill = Activity)) +
+  #geom_bar(stat = "identity", width = 1, color = "white") +
+  #coord_polar("y", start = 0) +
+  #geom_text(
+   # aes(label = ifelse(Percent > 0, paste0(Percent, "%"), "")),
+    #position = position_stack(vjust = 0.5),
+   # color = "black",
+    #size = 2
+ # ) +
+  #scale_fill_manual(values = c(
+    "Sedentary"     = "#00FF00"#,
+    "Light"         = "#FFD700"#,
+    "Moderate"      = "#FF6EB4"#,
+    "Vigorous"      = "#8da0cb"
+
+ # )) +
+ #facet_wrap(~ Participant.ID, ncol=5, scales = "free") +
+  #labs(
+   # title = "Average Activity Distribution across 14 Days",
+  #  fill = "Activity Level"
+ # ) +
+  #theme_void() +
+  #theme(
+  #  plot.title    = element_text(hjust = 0.5, face = "bold"),
+   # strip.text = element_text(size = 10, face = "bold")
+ # )
+
+```
+# 2. Exploratory Visualizations 
+## 2.1 Daily Steps Spagetti Plots 
+### 2.1.1 All Participants
+<p style="font-size:20px;">
+The first plot visualizes daily step counts across 14 Days for all participants. Each line represents a participant. 
+The subsequent plots are separated by week and by group  
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+ggplot(
+  data = filter(activity_clean),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2:15)+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (All Participants)",
+    x = "Day",
+    y = "Steps",
+    color = "Participant"
+  )
+```
+
+### 2.1.2 Controls 
+<p style="font-size:20px;">
+Controls, Week 1, 
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 2 & Day <= 8,Stage == "Control"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2:8) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (Control,Week 1)",
+    x = "Day",
+    y = "Steps",
+    color = "Control"
+  )
+```
+
+<p style="font-size:20px;">
+Controls, Week 2
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 9 & Day <= 15,Stage == "Control"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 9:15) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (Control,Week 2)",
+    x = "Day",
+    y = "Steps",
+    color = "Control"
+  )
+```
+
+### 2.1.3 HD2
+<p style="font-size:20px;">
+HD2, Week 1
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 2 & Day <= 8,Stage == "Stage 2"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2:8) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  
+  labs(
+    title = "Daily Steps (HD2, Week 1)",
+    x = "Day",
+    y = "Steps",
+    color = " HD2"
+  )
+```
+
+<p style="font-size:20px;">
+HD2,Week 2
+</p>
+
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 9 & Day <= 15,Stage == "Stage 2"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 9:15) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (HD2, Week 2)",
+    x = "Day",
+    y = "Steps",
+    color = "HD2"
+  )
+```
+
+### 2.1.4 HD3
+<p style="font-size:20px;">
+HD3, Week 1
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 2 & Day <= 8,Stage == "Stage 3"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 2:8) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (HD3,Week 1 )",
+    x = "Day",
+    y = "Steps",
+    color = "HD3"
+  )
+```
+<p style="font-size:20px;">
+HD3, Week 2
+</p>
+
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+ggplot(
+  data = filter(activity_clean, Day >= 9 & Day <= 15,Stage == "Stage 3"),
+  aes(x = Day, y = Steps, color = factor(Participant.ID))
+) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = 9:15) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    strip.text = element_blank()
+  ) +
+  labs(
+    title = "Daily Steps (HD3,Week 2 )",
+    x = "Day",
+    y = "Steps",
+    color = "HD3"
+  )
+```
+
+## 2.2 Violin Plots
+<p style="font-size:20px;">
+Violin plot with embedded an boxplot showing the distribution of daily steps by group.
+Wider sections of the violin indicate higher density of observations at that step count.
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+
+# Violin plot
+activity_clean %>%
+  ggplot(aes(x = Stage, y = Steps, fill = Stage)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +     # violin shape
+  geom_boxplot(width = 0.1, fill = "white", alpha = 0.8, outlier.shape = NA) + # box inside
+  scale_x_discrete(labels = c("Stage 2" = "HD2", "Stage 3" = "HD3")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Distribution of Daily Steps by Stage",
+    x = "Stage",
+    y = "Steps"
+  )
+```
+
+## 2.3 Box Plots 
+<p style="font-size:20px;">
+Another visualization of the daily step distribution by Stage. Outliers are represented as dot (weeks are combined)
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+activity_clean %>%
+  ggplot(aes(x = Stage, y = Steps, fill = Stage)) +
+  geom_boxplot(alpha = 0.7) + # includes outlier dots
+  scale_x_discrete(labels = c("Stage 2" = "HD2", "Stage 3" = "HD3")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Daily Steps",
+    x = "Stage",
+    y = "Steps"
+  )  
+
+```
+
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+### Overwrite activity summary for further analysis ###
+# group data by Participant, Stage, and Week to calculate each participant's
+# average daily counts per activity intensity within each week 
+# then percentages ar computed so that the four intensities sum to 100% per week 
+activity_summary <- activity_clean %>%
+  group_by(Participant.ID, Stage, Week) %>%
+  select(Stage, Week, Day, Sedentary, Light, Moderate, Vigorous) %>%
+  pivot_longer(cols = c(Sedentary, Light, Moderate, Vigorous),
+               names_to = "Activity",
+               values_to = "Count") %>%
+  group_by(Participant.ID, Stage, Week, Activity) %>%
+  summarise(Average = mean(Count, na.rm = TRUE), .groups = "drop") %>%
+  group_by(Participant.ID, Stage, Week) %>%
+  mutate(
+    Percent  = round(Average / sum(Average) * 100, 1),
+    Activity = factor(Activity, levels = c("Sedentary", "Light", "Moderate", "Vigorous"))
+  ) %>%
+  ungroup()
+
+```
+
+## 2.4 Activity Distribution (Stacked Bar Charts)
+### 2.4.1 HD3
+<p style="font-size:20px;">
+HD3 Activity Distribution 
+</p>
+```{r,fig.show="hold", fig.width=12,fig.height=10, echo=TRUE, message=FALSE}
+#First plot is a stacked bar chart showing the average percentage of time spent in each activity
+# intensity level  for HD Stage 3 participants broken down by participant and  by week 
+# Each bar represents one participant and sums to 100%
+# Percentage labels are displayed within each bar segment when the value is >= 2% to avoid overcrowding
+activity_summary %>%
+  filter(Stage == "Stage 3") %>%
+  mutate(
+    Activity = factor(Activity, levels = c("Sedentary", "Light", "Moderate", "Vigorous"))
+  ) %>%
+  ggplot(aes(x = factor(Participant.ID), y = Percent, fill = Activity)) +
+
+  geom_bar(stat = "identity") +
+
+  geom_text(
+    aes(label = ifelse(Percent >= 2, paste0(Percent, "%"), "")),
+    position = position_stack(vjust = 0.5),
+    size = 3,
+    color = "white",
+    fontface = "bold"
+  ) +
+
+  scale_fill_manual(values = c(
+    "Sedentary" = "#00FF00",
+    "Light"     = "#FFD700",
+    "Moderate"  = "#FF6EB4",
+    "Vigorous"  = "#8da0cb"
+  )) +
+
+  facet_wrap(~ Week, ncol = 1,
+             labeller = labeller(Week = c("Week1" = "Week 1", "Week2" = "Week 2"))) +
+
+  labs(
+    title = "Average Activity Distribution (Stage 3)",
+    x = "HD3",
+    y = "Percentage (%)",
+    fill = "Activity Level"
+  ) +
+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 11),
+      
+ panel.background = element_rect(fill = "white", color = NA),
+ plot.background  = element_rect(fill = "white", color = NA)
+ )
+ggsave(
+  filename = "/Users/jade/Downloads/Mend storage/HD3_activity.png",
+  width = 8,
+  height = 10,
+  dpi = 300
+  )
+```
+
+### 2.4.2 HD2 
+<p style="font-size:20px;">
+HD2 Activity Distribution 
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=12, echo=TRUE, message=TRUE}
+activity_summary %>%
+  filter(Stage == "Stage 2") %>%
+  mutate(
+    Activity = factor(Activity, levels = c("Sedentary", "Light", "Moderate", "Vigorous"))
+  ) %>%
+  ggplot(aes(x = factor(Participant.ID), y = Percent, fill = Activity)) +
+
+  geom_bar(stat = "identity") +
+
+  geom_text(
+    aes(label = ifelse(Percent >= 2, paste0(Percent, "%"), "")),
+    position = position_stack(vjust = 0.5),
+    size = 3,
+    color = "white",
+    fontface = "bold"
+  ) +
+
+  scale_fill_manual(values = c(
+    "Sedentary" = "#00FF00",
+    "Light"     = "#FFD700",
+    "Moderate"  = "#FF6EB4",
+    "Vigorous"  = "#8da0cb"
+  )) +
+
+  facet_wrap(~ Week, ncol = 1,
+             labeller = labeller(Week = c("Week1" = "Week 1", "Week2" = "Week 2"))) +
+
+  labs(
+    title = "Average Activity Distribution (Stage 2)",
+    x = "HD2",
+    y = "Percentage (%)",
+    fill = "Activity Level"
+  ) +
+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 11),
+      
+ panel.background = element_rect(fill = "white", color = NA),
+ plot.background  = element_rect(fill = "white", color = NA)
+ )
+ggsave(
+  filename = "/Users/jade/Downloads/Mend storage/HD2_activity.png",
+  width = 8,
+  height = 10,
+  dpi = 300
+  )
+```
+
+### 2.4.3 Controls
+<p style="font-size:20px;">
+Control Activity Distribution 
+</p>
+
+```{r,fig.show="hold", fig.width=12,fig.height=10, echo=TRUE, message=TRUE}
+activity_summary %>%
+  filter(Stage == "Control") %>%
+  mutate(
+    Activity = factor(Activity, levels = c("Sedentary", "Light", "Moderate", "Vigorous"))
+  ) %>%
+  ggplot(aes(x = factor(Participant.ID), y = Percent, fill = Activity)) +
+
+  geom_bar(stat = "identity") +
+
+  geom_text(
+    aes(label = ifelse(Percent >= 2, paste0(Percent, "%"), "")),
+    position = position_stack(vjust = 0.5),
+    size = 3,
+    color = "white",
+    fontface = "bold"
+  ) +
+
+  scale_fill_manual(values = c(
+    "Sedentary" = "#00FF00",
+    "Light"     = "#FFD700",
+    "Moderate"  = "#FF6EB4",
+    "Vigorous"  = "#8da0cb"
+  )) +
+
+  facet_wrap(~ Week, ncol = 1,
+             labeller = labeller(Week = c("Week1" = "Week 1", "Week2" = "Week 2"))) +
+
+  labs(
+    title = "Average Activity Distribution (Control)",
+    x = "Control",
+    y = "Percentage (%)",
+    fill = "Activity Level"
+  ) +
+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text.x = element_text(angle = 30, hjust = 1),
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold", size = 11),
+  
+ panel.background = element_rect(fill = "white", color = NA),
+ plot.background  = element_rect(fill = "white", color = NA)
+ )
+ggsave(
+  filename = "/Users/jade/Downloads/Mend storage/control_activity.png",
+  width = 8,
+  height = 10,
+  dpi = 300
+)
+```
+
+# 3. Statistical Analyses 
+## 3.1 Within-Group Paired T-Test for Steps and Activity Distrubition
+<p style="font-size:20px;">
+Paired two-tailed t-tests to assess whether average steps and activity intensity percentages significantly changed between Week 1 and Week 2 within each participant group
+</p>
+``` {r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+### Prepare and run t tests within group ####
+
+# Create week_mean objects. Get the amount of activity at each level and steps 
+# for week 1 and week 2
+
+week_mean <- activity_clean %>%
+  group_by(Participant.ID, Stage, Week) %>%
+  summarise(
+   Steps =mean(Steps, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  left_join(
+    activity_summary %>%
+      select(Participant.ID, Stage, Week, Activity, Percent) %>%
+      pivot_wider(names_from = Activity, values_from = Percent),
+    by = c("Participant.ID", "Stage", "Week")
+  ) %>%
+  pivot_wider(
+    names_from  = Week,
+    values_from = c(Steps, Sedentary, Light, Moderate, Vigorous)
+  )
+
+#### Split Data ####
+
+week_mean_control <- week_mean %>% filter(Stage == "Control")
+week_mean_HD2     <- week_mean %>% filter(Stage == "Stage 2")
+week_mean_HD3     <- week_mean %>% filter(Stage == "Stage 3")
+
+#### Create a function to run t tests ####
+
+run_ttests <- function(week_mean_df) {
+  vars <- c("Steps", "Sedentary", "Light", "Moderate", "Vigorous")
+  results <- lapply(vars, function(var) {
+    t.test(
+      x = week_mean_df[[paste0(var, "_Week1")]],
+      y = week_mean_df[[paste0(var, "_Week2")]],
+      paired = TRUE,
+      alternative = "two.sided"
+    )
+  })
+  names(results) <- vars
+  return(results)
+}
+#### Run t tests #####
+
+ttests_HD2     <- run_ttests(week_mean_HD2)
+ttests_HD3     <- run_ttests(week_mean_HD3)
+ttests_control <- run_ttests(week_mean_control)
+
+
+  
+```
+
+### 3.1.1 (Table) Within-Group Paired T-Test Plot  
+
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+#### Make tables ####
+
+make_combined_table <- function(ttest_list, week_mean_df, title) {
+  vars <- c("Steps", "Sedentary", "Light", "Moderate", "Vigorous")
+  
+  data.frame(
+    "Variable"    = vars,
+    "Week 1 Mean" = sapply(vars, function(v) round(mean(week_mean_df[[paste0(v, "_Week1")]], na.rm = TRUE), 2)),
+    "Week 2 Mean" = sapply(vars, function(v) round(mean(week_mean_df[[paste0(v, "_Week2")]], na.rm = TRUE), 2)),
+    "t"           = sapply(vars, function(v) round(ttest_list[[v]]$statistic, 3)),
+    "df"          = sapply(vars, function(v) round(ttest_list[[v]]$parameter, 3)),
+    "p-value"     = sapply(vars, function(v) round(ttest_list[[v]]$p.value, 3)),
+    check.names   = FALSE
+    
+    
+  ) %>%
+knitr::kable(
+  caption = paste0(
+    "<div style='text-align:center;color:black;'><b>",
+    title,
+    "</b></div>"
+  ),
+  align = c("c", "c", "c", "c", "c", "c"),
+  row.names = FALSE
+) %>%
+  kable_styling(
+    bootstrap_options = "basic",
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE)
+
+}
+make_combined_table(ttests_HD2, week_mean_HD2, "Paired T-test: HD Stage 2") 
+
+
+make_combined_table(ttests_HD3, week_mean_HD3, "Paired T-test: HD Stage 3")
+
+make_combined_table(ttests_control, week_mean_control, "Paired T-test: Controls")
+```
+
+### 3.1.2 (Plot) Within-Group Paired T-Test Plot (Steps) 
+<p style="font-size:20px;">
+Distribution of mean daily step counts across Week 1 and Week 2 within each participant group
+</p>
+```{r,fig.show="hold", fig.width=10,fig.height=5, echo=TRUE, message=FALSE}
+week_mean %>%
+  pivot_longer(
+    cols = c(Steps_Week1, Steps_Week2),
+    names_to = "Week",
+    values_to = "Steps"
+  ) %>%
+  mutate(Week = recode(Week, "Steps_Week1" = "Week 1", "Steps_Week2" = "Week 2")) %>%
+  ggplot(aes(x = Stage, y = Steps, fill = Week)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_x_discrete(labels = c("Stage 2" = "HD2", "Stage 3" = "HD3", "Control" = "Control")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "bottom"
+  ) +
+  labs(
+    title = "Within-Group Paired T-Tests: Mean Daily Steps",
+    x = "",
+    y = "Steps",
+    fill = ""
+  )
+
+
+```
+
+## 3.2 Between-Group T-Test 
+<p style="font-size:20px;">
+Two-tailed t-tests to compare PA measures between HD groups and controls
+</p>
+```{r,fig.show="hold", fig.width=12,fig.height=5, echo=TRUE, message=FALSE}
+run_between_ttests <- function(df_group1, df_group2) {
+  vars <- c("Steps", "Sedentary", "Light", "Moderate", "Vigorous")
+  results <- lapply(vars, function(var) {
+    t.test(
+      x = df_group1[[paste0(var, "_Week1")]],
+      y = df_group2[[paste0(var, "_Week1")]],
+      paired = FALSE,              # <- independent samples 
+      alternative = "two.sided"
+    )
+  })
+  names(results) <- vars
+  return(results)
+}
+
+#### Run between group t tests ####
+ttests_HD2_vs_control <- run_between_ttests(week_mean_HD2, week_mean_control)
+ttests_HD3_vs_control <- run_between_ttests(week_mean_HD3, week_mean_control)
+```
+
+### 3.2.1 (Table) Between-Group T-Test 
+```{r,fig.show="hold", fig.width=12,fig.height=5, echo=TRUE, message=FALSE}
+make_between_table <- function(ttest_list, df_group1, df_group2, title, hd_label) {
+  vars <- c("Steps", "Sedentary", "Light", "Moderate", "Vigorous")
+  
+  overall_mean <- function(df, v) {
+    round(mean(c(df[[paste0(v, "_Week1")]], 
+                 df[[paste0(v, "_Week2")]]), 
+               na.rm = TRUE), 2)
+  }
+  
+
+  df <- data.frame(
+    "Variable"     = vars,
+    "HD_Mean"      = sapply(vars, function(v) overall_mean(df_group1, v)),  # fixed
+    "Control Mean" = sapply(vars, function(v) overall_mean(df_group2, v)),  # fixed
+    "t"            = sapply(vars, function(v) round(ttest_list[[v]]$statistic, 3)),
+    "df"           = sapply(vars, function(v) round(ttest_list[[v]]$parameter, 3)),
+    "p-value"      = sapply(vars, function(v) round(ttest_list[[v]]$p.value, 3)),
+    check.names    = FALSE
+  )
+  
+
+  names(df)[names(df) == "HD_Mean"] <- hd_label
+  
+ 
+  df %>%
+  knitr::kable(
+    caption = paste0(
+      "<div style='text-align:center;color:black;'><b>",
+      title,
+      "</b></div>"
+    ),
+    escape = FALSE,
+    align = c("c", "c", "c", "c", "c", "c"),
+    row.names = FALSE
+  ) %>%
+  kable_styling(
+    bootstrap_options = "basic",
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  row_spec(0, bold = TRUE)
+}
+#### Make between group tables ####
+make_between_table(ttests_HD2_vs_control, week_mean_HD2, week_mean_control, "T-test: HD Stage 2 vs Controls", hd_label = "HD2 Mean")
+make_between_table(ttests_HD3_vs_control, week_mean_HD3, week_mean_control, "T-test: HD Stage 3 vs Controls", hd_label = "HD3 Mean")
+```
+## 3.3 ICC analysis
+<p style="font-size:20px;">
+Test-retest reliability across Week 1 and Week 2 to evaluate  HD and control groups separately using ICC(2,1) absolute agreement models
+</p>
+```{r echo=TRUE, fig.height=5, fig.show="hold", fig.width=12, eval=TRUE,message=FALSE}
+library(tidyverse)
+library(irr)
+
+# Filter valid wear days
+activity_clean <- activity_clean %>%
+  filter(Wear.Time >= 600) %>%
+  mutate(
+    Group = ifelse(Stage == "Control", "Control", "HD"),
+    day_num = as.numeric(factor(Day.of.Week,
+                                levels = c("Monday", "Tuesday", "Wednesday",
+                                           "Thursday", "Friday", "Saturday", 
+                                           "Sunday")))
+  )
+
+#  Keep only days that appear in BOTH weeks 
+valid_days <- activity_clean %>%
+  group_by(Participant.ID, Day.of.Week) %>%
+  filter(n_distinct(Week) == 2) %>%   # must appear in Week 1 AND Week 2
+  ungroup()
+
+#  Find longest consecutive run per participant 
+valid_days <- valid_days %>%
+  arrange(Participant.ID, day_num) %>%
+  group_by(Participant.ID, Group) %>%
+  mutate(
+    # detect when day sequence breaks
+    is_consecutive = day_num - lag(day_num, default = first(day_num)) <= 1,
+    run_id = cumsum(!is_consecutive),
+  ) %>%
+  group_by(Participant.ID, Group, run_id) %>%
+  mutate(run_length = n_distinct(day_num)) %>%   # count unique days in run
+  group_by(Participant.ID, Group) %>%
+  filter(run_length == max(run_length)) %>%       # keep longest run
+  filter(run_id == min(run_id)) %>%               # break ties: take first run
+  ungroup()
+
+#  Pivot wide 
+icc_wide <- valid_days %>%
+  select(Participant.ID, Group, Day.of.Week, Week,
+         Steps, Sedentary, Light, Moderate, Vigorous) %>%
+  pivot_wider(
+    names_from  = Week,
+    values_from = c(Steps, Sedentary, Light, Moderate, Vigorous),
+    values_fn   = mean
+  ) %>%
+  filter(!is.na(Steps_Week1) & !is.na(Steps_Week2))
+
+#  ICC(2,1) by group 
+vars <- c("Steps", "Sedentary", "Light", "Moderate", "Vigorous")
+
+run_icc <- function(data, group_name) {
+  lapply(vars, function(v) {
+    dat <- data[data$Group == group_name, 
+                c(paste0(v, "_Week1"), paste0(v, "_Week2"))]
+    dat <- dat[complete.cases(dat), ]
+    
+    result <- irr::icc(
+      dat,
+      model = "twoway",
+      type  = "agreement",
+      unit  = "single"    
+    )
+    
+    # return tidy summary
+    data.frame(
+      Variable  = v,
+      Group     = group_name,
+      N         = nrow(dat),
+      ICC       = round(result$value, 3),
+      Lower_CI  = round(result$lbound, 3),
+      Upper_CI  = round(result$ubound, 3),
+      p_value   = round(result$p.value, 4)
+    )
+  }) %>% bind_rows()
+}
+# ── Step 6: Combine and rename ─────────────────────────────────
+icc_results <- bind_rows(
+  run_icc(icc_wide, "HD"),
+  run_icc(icc_wide, "Control")
+) %>% 
+  rename(
+    "95% CI Lower" = Lower_CI,
+    "95% CI Upper" = Upper_CI,
+    "p-value"      = p_value
+  )
+# Run for both groups
+icc_results %>%
+  knitr::kable(
+    caption = paste0(
+      "<div style='text-align:center;color:black;'><b>",
+      "ICC(2,1): PA Test-Retest Reliability <br> ICC(2,1) Results by Group and Variable",
+      "</b></div>"
+    ),
+    escape = FALSE,
+    align = c("c", "c", "c", "c", "c", "c", "c"),
+    row.names = FALSE
+  ) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = "basic",
+    full_width = FALSE,
+    position = "center"
+  ) %>%
+  kableExtra::row_spec(0, bold = TRUE)
+
+```
+### 3.3.1 Bland–Altman plots 
+<p style="font-size:20px;">
+Visually assess agreement and measurement bias across weeks
+</p>
+```{r echo=TRUE, fig.height=10, fig.show="hold", fig.width=30, eval=TRUE,message=FALSE}
+make_ba_plot <- function(group_filter, var, color) {
+  d <- icc_wide %>%
+    filter(Group == group_filter) %>%
+    select(Participant.ID, Group, 
+           paste0(var, "_Week1"), 
+           paste0(var, "_Week2")) %>%
+    drop_na() %>%
+    mutate(
+      Mean = (.data[[paste0(var, "_Week1")]] + .data[[paste0(var, "_Week2")]]) / 2,
+      Diff =  .data[[paste0(var, "_Week1")]] - .data[[paste0(var, "_Week2")]]
+    )
+
+  mean_diff <- mean(d$Diff)
+  sd_diff   <- sd(d$Diff)
+  loa_upper <- mean_diff + 1.96 * sd_diff
+  loa_lower <- mean_diff - 1.96 * sd_diff
+
+  ggplot(d, aes(x = Mean, y = Diff)) +
+    geom_point(color = color, alpha = 0.7, size = 2) +
+    geom_hline(yintercept = mean_diff, color = "black",  linewidth = 0.8) +
+    geom_hline(yintercept = loa_upper, color = "gray40", linewidth = 0.7, linetype = "dashed") +
+    geom_hline(yintercept = loa_lower, color = "gray40", linewidth = 0.7, linetype = "dashed") +
+    annotate("text", x = Inf, y = loa_upper, 
+             label = paste0("+1.96 SD: ", round(loa_upper, 2)),
+             hjust = 1.1, vjust = -0.5, size = 5) +
+    annotate("text", x = Inf, y = loa_lower, 
+             label = paste0("-1.96 SD: ", round(loa_lower, 2)),
+             hjust = 1.1, vjust = 1.5, size = 5) +
+    annotate("text", x = Inf, y = mean_diff, 
+             label = paste0("Bias: ", round(mean_diff, 2)),
+             hjust = 1.1, vjust = -0.5, size = 5) +
+    scale_y_continuous(expand = expansion(mult = 0.2)) +
+    labs(
+      title = paste(group_filter, "—", var),
+      x     = "Mean (Week 1 & Week 2)", 
+      y     = "Difference (Week 1 - Week 2)"
+    ) +
+    theme_minimal(base_size = 16) +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5))
+}
+
+# ── Call for each variable and group ──────────────────────────
+ba1 <- make_ba_plot("HD",      "Steps",     "#2166AC")
+ba2 <- make_ba_plot("HD",      "Sedentary", "#2166AC")
+ba3 <- make_ba_plot("HD",      "Light",     "#2166AC")
+ba4 <- make_ba_plot("HD",      "Moderate",  "#2166AC")
+ba5 <- make_ba_plot("HD",      "Vigorous",  "#2166AC")
+
+ba6  <- make_ba_plot("Control", "Steps",     "#D6604D")
+ba7  <- make_ba_plot("Control", "Sedentary", "#D6604D")
+ba8  <- make_ba_plot("Control", "Light",     "#D6604D")
+ba9  <- make_ba_plot("Control", "Moderate",  "#D6604D")
+ba10 <- make_ba_plot("Control", "Vigorous",  "#D6604D")
+library(patchwork)
+p <- (ba1 | ba2 | ba3 | ba4 | ba5) /
+     (ba6 | ba7 | ba8 | ba9 | ba10)+
+plot_annotation(
+    title = "ICC Bland-Altman Plots: PA Variables",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, face = "bold", size = 26)
+    )
+  )
+p
+```
+# 3.4 Minimal Detectable Chance (MDC) and Standard Error of Measurement (SEM)
+<p style="font-size:20px;">
+SEM and MDC were calculated from ICC values to measure reliability and determine the smallest real change beyond measurement error within each group
+</p>
+```{r echo=TRUE, fig.height=8, fig.width=10, eval=TRUE,message=FALSE}
+run_mdc <- function(group_filter, var) {
+  d <- icc_wide %>%
+    filter(Group == group_filter) %>%
+    select(Participant.ID, Group,
+           paste0(var, "_Week1"),
+           paste0(var, "_Week2")) %>%
+    drop_na()
+
+  icc_val    <- icc_results %>% filter(Variable == var, Group == group_filter) %>% pull(ICC)
+  all_vals   <- c(d[[paste0(var, "_Week1")]], d[[paste0(var, "_Week2")]])
+  sd_pooled  <- sd(all_vals, na.rm = TRUE)
+  sem        <- sd_pooled * sqrt(1 - icc_val)
+  mdc        <- sem * 1.96 * sqrt(2)
+  grand_mean <- mean(all_vals, na.rm = TRUE)
+  mdc_pct    <- (mdc / grand_mean) * 100
+
+  tibble(
+    Variable     = var,
+    Group        = group_filter,
+    `Grand Mean` = round(grand_mean, 3),
+    SEM          = round(sem, 3),
+    MDC          = round(mdc, 3),
+    `MDC%`       = round(mdc_pct, 1)
+  )
+}
+
+mdc_rows  <- lapply(c("HD", "Control"), function(grp) lapply(vars, function(var) run_mdc(grp, var)))
+table_mdc <- bind_rows(unlist(mdc_rows, recursive = FALSE))
+
+table_mdc %>%
+  knitr::kable(
+    caption = paste0(
+      "<div style='text-align:center;color:black;'><b>",
+      "Minimal Detectable Change (MDC) <br> MDC Results by Group and Variable",
+      "</b></div>"
+    ),
+    escape    = FALSE,
+    align     = c("c", "c", "c", "c", "c", "c"),
+    row.names = FALSE
+  ) %>%
+  kableExtra::kable_styling(
+    bootstrap_options = "basic",
+    full_width        = FALSE,
+    position          = "center"
+  ) %>%
+  kableExtra::row_spec(0, bold = TRUE)
+
+
+
+```
+## 5.4.1 MDC Plots
+```{r echo=TRUE, fig.height=8, fig.width=10, eval=TRUE,message=FALSE}
+
+library(tidyverse)
+library(gridExtra)
+library(grid)
+
+# format table for plotting 
+df_mdc_plot <- table_mdc %>%
+  mutate(
+    Group = factor(Group, levels = c("HD", "Control")),
+    Variable = factor(Variable, levels = vars)   # PA variables
+  )
+#  colors 
+icc_colors <- c("HD" = "#2166AC", "Control" = "#D6604D")
+
+
+make_mdc_plot <- function(var) {
+
+  d <- df_mdc_plot %>% filter(Variable == var)
+
+  ggplot(d, aes(x = Group, y = `Grand Mean`, fill = Group)) +
+
+    geom_bar(stat = "identity", alpha = 0.8, width = 0.5) +
+
+    geom_errorbar(
+      aes(ymin = `Grand Mean` - MDC,
+          ymax = `Grand Mean` + MDC),
+      width = 0.2,
+      linewidth = 0.8
+    ) +
+
+    geom_text(
+      aes(label = paste0("MDC: ", MDC, "\n(", `MDC%`, "%)")),
+      vjust = -0.5,
+      size = 3.2
+    ) +
+
+    scale_fill_manual(values = icc_colors) +
+
+    labs(
+      title = var,
+      x = NULL,
+      y = var
+    ) +
+
+    theme_minimal(base_size = 11) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", hjust = 0.5)
+    )
+}
+
+#  create plots 
+mp1 <- make_mdc_plot("Steps")
+mp2 <- make_mdc_plot("Sedentary")
+mp3 <- make_mdc_plot("Light")
+mp4 <- make_mdc_plot("Moderate")
+mp5 <- make_mdc_plot("Vigorous")
+
+
+
+```
+
+
